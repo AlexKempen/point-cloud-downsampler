@@ -1,111 +1,116 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <algorithm>
-#include <numeric>
 
-class Point
+#include <boost/geometry.hpp>
+
+namespace bg = boost::geometry;
+
+// use namespace to avoid namespace pollution
+namespace PointCloud
 {
-public:
-    std::vector<double> point;
-    Point(double x, double y, double z);
-    Point();
+    typedef bg::model::point<double, 3, bg::cs::cartesian> Point;
+    typedef bg::model::multi_point<Point> Vector;
 
-    Point operator+(const Point &);
-    void operator+=(const Point &);
-    Point operator-(const Point &);
-    void operator-=(const Point &);
-
-    Point operator*(const double &);
-    void operator*=(const double &);
-    Point operator/(const double &);
-    void operator/=(const double &);
-
-    static Point getCentroid(const std::vector<Point>);
-};
-
-// class PointCloud {
-//     private:
-//         std::vector<Point> points;
-//     public:
-//         PointCloud(std::vector<Point> _points);
-//         std::vector<Point> getPoints();
-
-// };
+    static PointCloud::Vector GetPointCloudFromFile(std::string file_path);
+    static void SendPointCloudToFile(std::string file_path, PointCloud::Vector point_cloud);
+}
 
 class Downsampler
 {
-private:
-    const static int EPSILON = 0.000001;
-    std::vector<Point> pointCloud;
-
 public:
-    Downsampler(std::vector<Point> _pointCloud);
+    enum class OutputMethod
+    {
+        kFirstPoint,
+        kCentroid,
+        kMedoid
+    };
+
+    inline Downsampler(PointCloud::Vector point_cloud) { point_cloud_ = point_cloud; }
+
+    inline PointCloud::Vector point_cloud() { return point_cloud_; }
+    inline void point_cloud(PointCloud::Vector point_cloud) { point_cloud_ = point_cloud; };
+
+    inline OutputMethod output_method() { return output_method_; }
+    inline void output_method(Downsampler::OutputMethod output_method) { output_method_ = output_method; }
+
+    PointCloud::Vector OctalDownsample();
+
+private:
+    // Goal is to subdivide until stop conditions are met
+    // We use indicies to track points (since array access is fast and to avoid copying/mutating original data set)
+    // We perform the subdivision by organizing points into the four coordinate planes about a central pivot point
+    // The current size is tracked by a bounding box
+    // The pivot is then the center of the bounding box
+    // void octalHelper(PointCloud::Vector point_cloud);
+    void Downsampler::OctalHelper(PointCloud::Vector &result, PointCloud::Vector point_cloud)
+    {
+        if (point_cloud.size() <= stop_points_) {
+            result.insert(result.end(), point_cloud.begin(), point_cloud.end());
+            return;
+        }
+
+        bg::model::box<PointCloud::Point> box;
+        bg::envelope(point_cloud, box);
+
+        PointCloud::Point center;
+        bg::centroid(box, center);
+
+        std::vector<PointCloud::Vector> boxes(8);
+        for (PointCloud::Point point : point_cloud)
+        {
+            bool x_greater = point.get<0>() > center.get<0>();
+            bool y_greater = point.get<1>() > center.get<1>();
+            bool z_greater = point.get<2>() > center.get<2>();
+            const int kIndex = (4 * x_greater) + (2 * y_greater) + (z_greater);
+            boxes[kIndex].push_back(point);
+        }
+
+        for (PointCloud::Vector point_cloud : boxes) { Downsampler::OctalHelper(result, point_cloud); }
+    }
+
+    PointCloud::Vector point_cloud_;
+    OutputMethod output_method_ = OutputMethod::kCentroid;
+    int stop_points_ = 1;
 };
 
 int main()
 {
-    Point p1 = Point(1, 2, 3);
-    Point p2 = Point(2, 3, 4);
-    p1 += p2;
-    for (double v : p1.point)
-    {
-        std::cout << " " << v;
+    PointCloud::Vector point_cloud = PointCloud::GetPointCloudFromFile("input.csv");
+    Downsampler downsampler = Downsampler(point_cloud);
+    PointCloud::Vector out;
+    out = downsampler.OctalDownsample();
+    int count = 0;
+    for (PointCloud::Point point : out) {
+        count++;
     }
-    std::cout << std::endl;
-    p1 *= 2;
-    std::for_each(p1.point.begin(), p1.point.end(), [](const double &n) { std::cout << " " << n; });
+    std::cout << count << std::endl;
+
     return 0;
 }
 
-Point::Point()
+PointCloud::Vector Downsampler::OctalDownsample()
 {
-    point = std::vector<double>{0, 0, 0};
-    return;
-}
-Point::Point(double x, double y, double z) { point = std::vector<double>{x, y, z}; }
-
-Point Point::operator+(const Point &opP)
-{
-    Point out;
-    std::transform(point.cbegin(), point.cend(), opP.point.cbegin(), out.point.begin(), std::plus<double>());
-    return out;
-}
-void Point::operator+=(const Point &opP) { *this = *this + opP; }
-
-Point Point::operator-(const Point &opP)
-{
-    Point out;
-    std::transform(point.cbegin(), point.cend(), opP.point.cbegin(), out.point.begin(), std::minus<double>());
-    return out;
-}
-void Point::operator-=(const Point &opP) { *this = *this - opP; }
-
-Point Point::operator*(const double &n)
-{
-    Point out;
-    std::transform(point.cbegin(), point.cend(), out.point.begin(), [n](double p)
-                   { return p * n; });
-    return out;
-}
-void Point::operator*=(const double &n) { *this = *this * n; }
-
-Point Point::operator/(const double &n)
-{
-    Point out;
-    std::transform(point.cbegin(), point.cend(), out.point.begin(), [n](double p)
-                   { return p / n; });
-    return out;
-}
-void Point::operator/=(const double &n) { *this = *this / n; }
-
-Point Point::getCentroid(std::vector<Point> points)
-{
-    Point centroid = Point();
-    return std::accumulate(points.begin(), points.end(), centroid, std::plus<Point>()) / points.size();
+    PointCloud::Vector result;
+    Downsampler::OctalHelper(result, point_cloud_);
+    return result;
 }
 
-Downsampler::Downsampler(std::vector<Point> _pointCloud)
+PointCloud::Vector PointCloud::GetPointCloudFromFile(std::string file_path)
 {
-    pointCloud = _pointCloud;
+    // std::fstream fin;
+    // fin.open(file_path, std::ios::in);
+
+    // PointCloud::Vector point_cloud;
+    // std::string line;
+    // while (fin >> line) {
+
+    // }
+
+
+    return {};
+}
+
+void PointCloud::SendPointCloudToFile(std::string file_path, PointCloud::Vector point_cloud)
+{
 }
