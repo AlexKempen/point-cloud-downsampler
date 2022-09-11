@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <fstream>
 
 #include <boost/geometry.hpp>
 
@@ -12,8 +13,8 @@ namespace PointCloud
     typedef bg::model::point<double, 3, bg::cs::cartesian> Point;
     typedef bg::model::multi_point<Point> Vector;
 
-    static PointCloud::Vector GetPointCloudFromFile(std::string file_path);
-    static void SendPointCloudToFile(std::string file_path, PointCloud::Vector point_cloud);
+    static void GetPointCloudFromFile(std::string file_path, PointCloud::Vector &point_cloud);
+    static void SendPointCloudToFile(std::string file_path, PointCloud::Vector &point_cloud);
 }
 
 class Downsampler
@@ -34,7 +35,7 @@ public:
     inline OutputMethod output_method() { return output_method_; }
     inline void output_method(Downsampler::OutputMethod output_method) { output_method_ = output_method; }
 
-    PointCloud::Vector OctalDownsample();
+    void OctalDownsample(PointCloud::Vector &);
 
 private:
     // Goal is to subdivide until stop conditions are met
@@ -43,9 +44,10 @@ private:
     // The current size is tracked by a bounding box
     // The pivot is then the center of the bounding box
     // void octalHelper(PointCloud::Vector point_cloud);
-    void Downsampler::OctalHelper(PointCloud::Vector &result, PointCloud::Vector point_cloud)
+    void OctalHelper(PointCloud::Vector &result, PointCloud::Vector point_cloud)
     {
-        if (point_cloud.size() <= stop_points_) {
+        if (point_cloud.size() <= stop_points_)
+        {
             result.insert(result.end(), point_cloud.begin(), point_cloud.end());
             return;
         }
@@ -66,7 +68,10 @@ private:
             boxes[kIndex].push_back(point);
         }
 
-        for (PointCloud::Vector point_cloud : boxes) { Downsampler::OctalHelper(result, point_cloud); }
+        for (PointCloud::Vector point_cloud : boxes)
+        {
+            Downsampler::OctalHelper(result, point_cloud);
+        }
     }
 
     PointCloud::Vector point_cloud_;
@@ -76,41 +81,53 @@ private:
 
 int main()
 {
-    PointCloud::Vector point_cloud = PointCloud::GetPointCloudFromFile("input.csv");
-    Downsampler downsampler = Downsampler(point_cloud);
-    PointCloud::Vector out;
-    out = downsampler.OctalDownsample();
-    int count = 0;
-    for (PointCloud::Point point : out) {
-        count++;
-    }
-    std::cout << count << std::endl;
+    // PointCloud::Vector point_cloud = PointCloud::GetPointCloudFromFile("input.csv");
+    // PointCloud::GetPointCloudFromFile("input.csv");
+
+    // Downsampler downsampler = Downsampler(point_cloud);
+    // PointCloud::Vector out;
+    // out = downsampler.OctalDownsample();
+    // int count = 0;
+    // for (PointCloud::Point point : point_cloud)
+    // {
+    //     count++;
+    // }
+    // std::cout << count << std::endl;
 
     return 0;
 }
 
-PointCloud::Vector Downsampler::OctalDownsample()
+void Downsampler::OctalDownsample(PointCloud::Vector &result)
 {
-    PointCloud::Vector result;
     Downsampler::OctalHelper(result, point_cloud_);
-    return result;
 }
 
-PointCloud::Vector PointCloud::GetPointCloudFromFile(std::string file_path)
+static void PointCloud::GetPointCloudFromFile(std::string file_path, PointCloud::Vector &point_cloud)
 {
     // std::fstream fin;
     // fin.open(file_path, std::ios::in);
 
-    // PointCloud::Vector point_cloud;
-    // std::string line;
-    // while (fin >> line) {
+    // std::string line, word, temp;
+    // while (fin >> temp)
+    // {
+    //     std::getline(fin, line);
+    //     std::stringstream s(line);
 
+    //     PointCloud::Point point;
+    //     std::vector<double> vals;
+    //     for (int i = 0; i < 3; i++)
+    //     {
+    //         std::getline(s, word, ',');
+    //         double value = std::stod(word);
+    //         vals.push_back(value);
+    //     }
+    //     bg::set<0>(point, vals[0]);
+    //     bg::set<1>(point, vals[1]);
+    //     bg::set<2>(point, vals[2]);
+    //     point_cloud.push_back(point);
     // }
-
-
-    return {};
 }
 
-void PointCloud::SendPointCloudToFile(std::string file_path, PointCloud::Vector point_cloud)
+static void PointCloud::SendPointCloudToFile(std::string file_path, PointCloud::Vector &point_cloud)
 {
 }
